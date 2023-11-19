@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 mod common_components;
-mod player;
 mod constants;
+mod player;
 
 use player::PlayerPlugin;
 

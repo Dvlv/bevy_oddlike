@@ -17,11 +17,13 @@ impl Plugin for PlayerPlugin {
 enum PlayerState {
     IDLE,
     WALKING,
+    HOPPING,
 }
 
 enum PlayerMovement {
     NOTHING,
     WALK,
+    HOP,
 }
 
 #[derive(Component)]
@@ -42,6 +44,7 @@ fn create_player(
     let mut player_frames = HashMap::<PlayerState, (usize, usize)>::new();
     player_frames.insert(PlayerState::IDLE, (0 as usize, 0 as usize));
     player_frames.insert(PlayerState::WALKING, (0 as usize, 3 as usize));
+    player_frames.insert(PlayerState::HOPPING, (4 as usize, 11 as usize));
 
     let player = Player {
         state: PlayerState::IDLE,
@@ -55,7 +58,7 @@ fn create_player(
 
     let texture_handle = asset_server.load("player-walk.png");
     let texture_atlas =
-        TextureAtlas::from_grid(texture_handle, Vec2::new(100.0, 100.0), 5, 1, None, None);
+        TextureAtlas::from_grid(texture_handle, Vec2::new(100.0, 100.0), 12, 1, None, None);
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
 
     let player_sprite_sheet = SpriteSheetBundle {
@@ -85,7 +88,7 @@ fn update_player(
                 was_input_pressed = true;
 
                 match player.state {
-                    PlayerState::IDLE | PlayerState::WALKING => {
+                    PlayerState::IDLE | PlayerState::WALKING | PlayerState::HOPPING => {
                         change_player_state(&mut player, PlayerState::WALKING);
                         player.is_facing_left = false;
                     }
@@ -95,12 +98,16 @@ fn update_player(
                 was_input_pressed = true;
 
                 match player.state {
-                    PlayerState::IDLE | PlayerState::WALKING => {
+                    PlayerState::IDLE | PlayerState::WALKING | PlayerState::HOPPING => {
                         change_player_state(&mut player, PlayerState::WALKING);
                         player.is_facing_left = true;
                     }
                     _ => {}
                 }
+            }
+            if keys.just_pressed(KeyCode::A) {
+                was_input_pressed = true;
+                change_player_state(&mut player, PlayerState::HOPPING);
             }
 
             texture.flip_x = player.is_facing_left;
@@ -109,7 +116,10 @@ fn update_player(
                 player.state = PlayerState::IDLE;
             }
         } else {
-            // render animation
+            // rendering animation
+            if keys.just_pressed(KeyCode::A) {
+                change_player_state(&mut player, PlayerState::HOPPING);
+            }
         }
     }
 }
@@ -119,6 +129,7 @@ fn change_player_state(mut player: &mut Player, state: PlayerState) {
     player.animation_handler.is_playing = true;
     player.animation_handler.min_frame = player.state_frames[&player.state].0;
     player.animation_handler.max_frame = player.state_frames[&player.state].1;
+    player.animation_handler.current_frame = player.animation_handler.min_frame;
 }
 
 fn animate_player(
@@ -136,16 +147,40 @@ fn animate_player(
         if anim.timer.just_finished() {
             anim.current_frame += 1;
 
-            if player_current_state == &PlayerState::WALKING {
+            // if walk / run / hop, move forwards
+            if player_current_state == &PlayerState::WALKING
+                || player_current_state == &PlayerState::HOPPING
+            {
                 // let mut move_step = window / NUM_TILES;
                 let window = window_query.get_single().unwrap();
                 let num_frames: f32 = anim.max_frame as f32 - anim.min_frame as f32 + 1 as f32;
                 let move_step = window.width() / NUM_TILES / num_frames;
 
-                if *is_left {
-                    transform.translation.x -= move_step;
-                } else {
-                    transform.translation.x += move_step;
+                if player_current_state == &PlayerState::WALKING {
+                    // if walking, move fwd on all frames
+                    if *is_left {
+                        transform.translation.x -= move_step;
+                    } else {
+                        transform.translation.x += move_step;
+                    }
+                } else if player_current_state == &PlayerState::HOPPING {
+                    // if hopping, we only move on the middle frames
+                    // TODO unhardcode these somehow
+                    if anim.current_frame == 7 || anim.current_frame == 8 {
+                        transform.translation.y += 20.0;
+                    } else if anim.current_frame == 9 || anim.current_frame == 10 {
+                        transform.translation.y -= 20.0;
+                    }
+
+                    if anim.current_frame > 6 && anim.current_frame < 11 {
+                        let move_step = move_step * 3.0;
+                        // TODO can I refactor this out?
+                        if *is_left {
+                            transform.translation.x -= move_step;
+                        } else {
+                            transform.translation.x += move_step;
+                        }
+                    }
                 }
             }
 
