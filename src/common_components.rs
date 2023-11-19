@@ -18,7 +18,7 @@ impl AnimationHandler {
     pub fn new(min_frame: usize, max_frame: usize) -> Self {
         AnimationHandler {
             current_frame: 0,
-            timer: Timer::from_seconds(0.12, TimerMode::Repeating),
+            timer: Timer::from_seconds(0.1, TimerMode::Repeating),
             is_playing: false,
             min_frame,
             max_frame,

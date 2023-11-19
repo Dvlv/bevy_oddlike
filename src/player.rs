@@ -1,4 +1,5 @@
 use crate::common_components::{AnimationHandler, Velocity};
+use crate::constants::NUM_TILES;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use std::collections::HashMap;
@@ -11,9 +12,6 @@ impl Plugin for PlayerPlugin {
             .add_systems(Update, (update_player, animate_player));
     }
 }
-
-const PLAYER_WALK_SPEED: f32 = 3.0;
-const NUM_TILES: f32 = 15.0;
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 enum PlayerState {
@@ -132,7 +130,7 @@ fn animate_player(
         let player_current_state = &player.state.clone();
         let is_left = &player.is_facing_left.clone();
         let anim_bounds = &player.state_frames[player_current_state].clone();
-        let mut anim = &mut player.animation_handler;
+        let anim = &mut player.animation_handler;
 
         anim.timer.tick(time.delta());
         if anim.timer.just_finished() {
@@ -141,11 +139,8 @@ fn animate_player(
             if player_current_state == &PlayerState::WALKING {
                 // let mut move_step = window / NUM_TILES;
                 let window = window_query.get_single().unwrap();
-                let num_frames: f32 = anim.max_frame as f32
-                    - anim.min_frame as f32
-                    + 1 as f32;
-                let mut move_step = window.width() / NUM_TILES / num_frames;
-                println!("{}, {num_frames}", move_step);
+                let num_frames: f32 = anim.max_frame as f32 - anim.min_frame as f32 + 1 as f32;
+                let move_step = window.width() / NUM_TILES / num_frames;
 
                 if *is_left {
                     transform.translation.x -= move_step;
