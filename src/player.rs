@@ -21,12 +21,12 @@ enum PlayerState {
     CROUCHING,
     CROUCHED,
     UNCROUCHING,
+    ROLLING,
 }
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 enum PlayerMovement {
     NOTHING,
-    WALK,
     HOP,
     CROUCH,
     UNCROUCH,
@@ -54,6 +54,7 @@ fn create_player(
     player_frames.insert(PlayerState::CROUCHING, (12 as usize, 14 as usize));
     player_frames.insert(PlayerState::CROUCHED, (15 as usize, 15 as usize));
     player_frames.insert(PlayerState::UNCROUCHING, (15 as usize, 18 as usize));
+    player_frames.insert(PlayerState::ROLLING, (19 as usize, 21 as usize));
 
     let player = Player {
         state: PlayerState::IDLE,
@@ -84,11 +85,10 @@ fn create_player(
 /// Or if there was no buffered input to process, we process the current input
 /// and buffer any new input if we are in a busy state
 fn update_player(
-    mut query: Query<(&mut Player, &mut Transform, &mut TextureAtlasSprite)>,
+    mut query: Query<(&mut Player, &mut TextureAtlasSprite)>,
     keys: Res<Input<KeyCode>>,
-    window_query: Query<&Window, With<PrimaryWindow>>,
 ) {
-    for (mut player, mut transform, mut texture) in &mut query {
+    for (mut player, mut texture) in &mut query {
         let mut was_input_pressed = false;
         if !player.animation_handler.is_playing {
             if player.next_movement == PlayerMovement::HOP {
@@ -113,7 +113,13 @@ fn update_player(
                             change_player_state(&mut player, PlayerState::WALKING);
                             player.is_facing_left = false;
                         }
-                        _ => {}
+                        PlayerState::CROUCHED | PlayerState::ROLLING => {
+                            change_player_state(&mut player, PlayerState::ROLLING);
+                            player.is_facing_left = false;
+                        }
+                        _ => {
+                            was_input_pressed = false;
+                        }
                     }
                 } else if keys.pressed(KeyCode::Left) {
                     was_input_pressed = true;
@@ -123,7 +129,13 @@ fn update_player(
                             change_player_state(&mut player, PlayerState::WALKING);
                             player.is_facing_left = true;
                         }
-                        _ => {}
+                        PlayerState::CROUCHED | PlayerState::ROLLING => {
+                            change_player_state(&mut player, PlayerState::ROLLING);
+                            player.is_facing_left = true;
+                        }
+                        _ => {
+                            was_input_pressed = false;
+                        }
                     }
                 } else if keys.pressed(KeyCode::Down) {
                     was_input_pressed = true;
@@ -131,7 +143,9 @@ fn update_player(
                         PlayerState::IDLE | PlayerState::CROUCHING => {
                             change_player_state(&mut player, PlayerState::CROUCHING);
                         }
-                        _ => {}
+                        _ => {
+                            was_input_pressed = false;
+                        }
                     }
                 } else if keys.pressed(KeyCode::Up) {
                     was_input_pressed = true;
@@ -139,7 +153,9 @@ fn update_player(
                         PlayerState::CROUCHED => {
                             change_player_state(&mut player, PlayerState::UNCROUCHING);
                         }
-                        _ => {}
+                        _ => {
+                            was_input_pressed = false;
+                        }
                     }
                 }
                 if keys.just_pressed(KeyCode::A) {
@@ -149,8 +165,9 @@ fn update_player(
 
                 texture.flip_x = player.is_facing_left;
 
-                let is_crouching =
-                    player.state == PlayerState::CROUCHING || player.state == PlayerState::CROUCHED;
+                let is_crouching = player.state == PlayerState::CROUCHING
+                    || player.state == PlayerState::CROUCHED
+                    || player.state == PlayerState::ROLLING;
 
                 if !was_input_pressed && !is_crouching {
                     change_player_state(&mut player, PlayerState::IDLE);
@@ -166,7 +183,9 @@ fn update_player(
             } else if keys.just_pressed(KeyCode::Down) {
                 player.next_movement = PlayerMovement::CROUCH;
             } else if keys.just_pressed(KeyCode::Up) {
-                player.next_movement = PlayerMovement::UNCROUCH;
+                if player.state == PlayerState::CROUCHED || player.state == PlayerState::ROLLING {
+                    player.next_movement = PlayerMovement::UNCROUCH;
+                }
             }
         }
     }
@@ -198,13 +217,16 @@ fn animate_player(
             // if walk / run / hop, move forwards
             if player_current_state == &PlayerState::WALKING
                 || player_current_state == &PlayerState::HOPPING
+                || player_current_state == &PlayerState::ROLLING
             {
                 // let mut move_step = window / NUM_TILES;
                 let window = window_query.get_single().unwrap();
                 let num_frames: f32 = anim.max_frame as f32 - anim.min_frame as f32 + 1 as f32;
                 let move_step = window.width() / NUM_TILES / num_frames;
 
-                if player_current_state == &PlayerState::WALKING {
+                if player_current_state == &PlayerState::WALKING
+                    || player_current_state == &PlayerState::ROLLING
+                {
                     // if walking, move fwd on all frames
                     if *is_left {
                         transform.translation.x -= move_step;
@@ -233,7 +255,14 @@ fn animate_player(
             }
 
             if anim.current_frame > anim_bounds.1 {
-                anim.current_frame = anim_bounds.1;
+                match player_current_state {
+                    &PlayerState::WALKING | &PlayerState::ROLLING => {
+                        anim.current_frame = anim_bounds.0;
+                    }
+                    _ => {
+                        anim.current_frame = anim_bounds.1;
+                    }
+                }
                 anim.is_playing = false;
             }
         }
