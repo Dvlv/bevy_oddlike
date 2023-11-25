@@ -1,6 +1,4 @@
 use bevy::prelude::*;
-use bevy::utils::HashMap;
-use std::cmp::max;
 
 #[derive(Component)]
 pub struct Velocity(pub Vec2);

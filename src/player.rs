@@ -20,10 +20,12 @@ enum PlayerState {
     HOPPING,
 }
 
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 enum PlayerMovement {
     NOTHING,
     WALK,
     HOP,
+    CROUCH,
 }
 
 #[derive(Component)]
@@ -53,7 +55,6 @@ fn create_player(
         animation_handler: AnimationHandler::new(0, 0), // IDLE is 1 frame
         state_frames: player_frames,
     };
-    let transform = Transform::from_translation(Vec3::new(0.0, 0.0, 0.0));
     let default_velo = Velocity(Vec2::new(0.0, 0.0));
 
     let texture_handle = asset_server.load("player-walk.png");
@@ -81,8 +82,14 @@ fn update_player(
     window_query: Query<&Window, With<PrimaryWindow>>,
 ) {
     for (mut player, mut transform, mut texture) in &mut query {
+        let mut was_input_pressed = false;
         if !player.animation_handler.is_playing {
-            let mut was_input_pressed = false;
+            if player.next_movement == PlayerMovement::HOP {
+                // buffered hop, ignore other input for now
+                was_input_pressed = true;
+                change_player_state(&mut player, PlayerState::HOPPING);
+                player.next_movement = PlayerMovement::NOTHING;
+            }
             // read input from keyboard and update state
             if keys.pressed(KeyCode::Right) {
                 was_input_pressed = true;
@@ -118,13 +125,14 @@ fn update_player(
         } else {
             // rendering animation
             if keys.just_pressed(KeyCode::A) {
-                change_player_state(&mut player, PlayerState::HOPPING);
+                //change_player_state(&mut player, PlayerState::HOPPING);
+                player.next_movement = PlayerMovement::HOP;
             }
         }
     }
 }
 
-fn change_player_state(mut player: &mut Player, state: PlayerState) {
+fn change_player_state(player: &mut Player, state: PlayerState) {
     player.state = state;
     player.animation_handler.is_playing = true;
     player.animation_handler.min_frame = player.state_frames[&player.state].0;
