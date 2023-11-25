@@ -89,38 +89,39 @@ fn update_player(
                 was_input_pressed = true;
                 change_player_state(&mut player, PlayerState::HOPPING);
                 player.next_movement = PlayerMovement::NOTHING;
-            }
-            // read input from keyboard and update state
-            if keys.pressed(KeyCode::Right) {
-                was_input_pressed = true;
+            } else {
+                // read input from keyboard and update state
+                if keys.pressed(KeyCode::Right) {
+                    was_input_pressed = true;
 
-                match player.state {
-                    PlayerState::IDLE | PlayerState::WALKING | PlayerState::HOPPING => {
-                        change_player_state(&mut player, PlayerState::WALKING);
-                        player.is_facing_left = false;
+                    match player.state {
+                        PlayerState::IDLE | PlayerState::WALKING | PlayerState::HOPPING => {
+                            change_player_state(&mut player, PlayerState::WALKING);
+                            player.is_facing_left = false;
+                        }
+                        _ => {}
                     }
-                    _ => {}
-                }
-            } else if keys.pressed(KeyCode::Left) {
-                was_input_pressed = true;
+                } else if keys.pressed(KeyCode::Left) {
+                    was_input_pressed = true;
 
-                match player.state {
-                    PlayerState::IDLE | PlayerState::WALKING | PlayerState::HOPPING => {
-                        change_player_state(&mut player, PlayerState::WALKING);
-                        player.is_facing_left = true;
+                    match player.state {
+                        PlayerState::IDLE | PlayerState::WALKING | PlayerState::HOPPING => {
+                            change_player_state(&mut player, PlayerState::WALKING);
+                            player.is_facing_left = true;
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
-            }
-            if keys.just_pressed(KeyCode::A) {
-                was_input_pressed = true;
-                change_player_state(&mut player, PlayerState::HOPPING);
-            }
+                if keys.just_pressed(KeyCode::A) {
+                    was_input_pressed = true;
+                    change_player_state(&mut player, PlayerState::HOPPING);
+                }
 
-            texture.flip_x = player.is_facing_left;
+                texture.flip_x = player.is_facing_left;
 
-            if !was_input_pressed {
-                player.state = PlayerState::IDLE;
+                if !was_input_pressed {
+                    player.state = PlayerState::IDLE;
+                }
             }
         } else {
             // rendering animation
