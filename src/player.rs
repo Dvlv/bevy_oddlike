@@ -18,6 +18,9 @@ enum PlayerState {
     IDLE,
     WALKING,
     HOPPING,
+    CROUCHING,
+    CROUCHED,
+    UNCROUCHING,
 }
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
@@ -26,6 +29,7 @@ enum PlayerMovement {
     WALK,
     HOP,
     CROUCH,
+    UNCROUCH,
 }
 
 #[derive(Component)]
@@ -47,6 +51,9 @@ fn create_player(
     player_frames.insert(PlayerState::IDLE, (0 as usize, 0 as usize));
     player_frames.insert(PlayerState::WALKING, (0 as usize, 3 as usize));
     player_frames.insert(PlayerState::HOPPING, (4 as usize, 11 as usize));
+    player_frames.insert(PlayerState::CROUCHING, (12 as usize, 14 as usize));
+    player_frames.insert(PlayerState::CROUCHED, (15 as usize, 15 as usize));
+    player_frames.insert(PlayerState::UNCROUCHING, (15 as usize, 18 as usize));
 
     let player = Player {
         state: PlayerState::IDLE,
@@ -59,7 +66,7 @@ fn create_player(
 
     let texture_handle = asset_server.load("player-walk.png");
     let texture_atlas =
-        TextureAtlas::from_grid(texture_handle, Vec2::new(100.0, 100.0), 12, 1, None, None);
+        TextureAtlas::from_grid(texture_handle, Vec2::new(100.0, 100.0), 12, 2, None, None);
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
 
     let player_sprite_sheet = SpriteSheetBundle {
@@ -86,8 +93,15 @@ fn update_player(
         if !player.animation_handler.is_playing {
             if player.next_movement == PlayerMovement::HOP {
                 // buffered hop, ignore other input for now
-                was_input_pressed = true;
                 change_player_state(&mut player, PlayerState::HOPPING);
+                player.next_movement = PlayerMovement::NOTHING;
+            } else if player.next_movement == PlayerMovement::CROUCH
+                && player.state != PlayerState::CROUCHING
+            {
+                change_player_state(&mut player, PlayerState::CROUCHING);
+                player.next_movement = PlayerMovement::NOTHING;
+            } else if player.next_movement == PlayerMovement::UNCROUCH {
+                change_player_state(&mut player, PlayerState::UNCROUCHING);
                 player.next_movement = PlayerMovement::NOTHING;
             } else {
                 // read input from keyboard and update state
@@ -111,6 +125,22 @@ fn update_player(
                         }
                         _ => {}
                     }
+                } else if keys.pressed(KeyCode::Down) {
+                    was_input_pressed = true;
+                    match player.state {
+                        PlayerState::IDLE | PlayerState::CROUCHING => {
+                            change_player_state(&mut player, PlayerState::CROUCHING);
+                        }
+                        _ => {}
+                    }
+                } else if keys.pressed(KeyCode::Up) {
+                    was_input_pressed = true;
+                    match player.state {
+                        PlayerState::CROUCHED => {
+                            change_player_state(&mut player, PlayerState::UNCROUCHING);
+                        }
+                        _ => {}
+                    }
                 }
                 if keys.just_pressed(KeyCode::A) {
                     was_input_pressed = true;
@@ -119,8 +149,13 @@ fn update_player(
 
                 texture.flip_x = player.is_facing_left;
 
-                if !was_input_pressed {
-                    player.state = PlayerState::IDLE;
+                let is_crouching =
+                    player.state == PlayerState::CROUCHING || player.state == PlayerState::CROUCHED;
+
+                if !was_input_pressed && !is_crouching {
+                    change_player_state(&mut player, PlayerState::IDLE);
+                } else if !was_input_pressed && is_crouching {
+                    change_player_state(&mut player, PlayerState::CROUCHED);
                 }
             }
         } else {
@@ -128,6 +163,10 @@ fn update_player(
             if keys.just_pressed(KeyCode::A) {
                 //change_player_state(&mut player, PlayerState::HOPPING);
                 player.next_movement = PlayerMovement::HOP;
+            } else if keys.just_pressed(KeyCode::Down) {
+                player.next_movement = PlayerMovement::CROUCH;
+            } else if keys.just_pressed(KeyCode::Up) {
+                player.next_movement = PlayerMovement::UNCROUCH;
             }
         }
     }
@@ -194,7 +233,7 @@ fn animate_player(
             }
 
             if anim.current_frame > anim_bounds.1 {
-                anim.current_frame = anim_bounds.0;
+                anim.current_frame = anim_bounds.1;
                 anim.is_playing = false;
             }
         }
