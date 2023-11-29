@@ -22,4 +22,8 @@ impl AnimationHandler {
             max_frame,
         }
     }
+
+    pub fn set_timer_speed(&mut self, speed: f32) {
+        self.timer = Timer::from_seconds(speed, TimerMode::Repeating);
+    }
 }

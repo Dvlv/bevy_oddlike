@@ -22,6 +22,8 @@ enum PlayerState {
     CROUCHED,
     UNCROUCHING,
     ROLLING,
+    RUNNING,
+    RUNJUMPING,
 }
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
@@ -30,6 +32,7 @@ enum PlayerMovement {
     HOP,
     CROUCH,
     UNCROUCH,
+    RUNJUMP,
 }
 
 #[derive(Component)]
@@ -55,6 +58,8 @@ fn create_player(
     player_frames.insert(PlayerState::CROUCHED, (15 as usize, 15 as usize));
     player_frames.insert(PlayerState::UNCROUCHING, (15 as usize, 18 as usize));
     player_frames.insert(PlayerState::ROLLING, (19 as usize, 21 as usize));
+    player_frames.insert(PlayerState::RUNNING, (22 as usize, 25 as usize));
+    player_frames.insert(PlayerState::RUNJUMPING, (6 as usize, 9 as usize));
 
     let player = Player {
         state: PlayerState::IDLE,
@@ -67,7 +72,7 @@ fn create_player(
 
     let texture_handle = asset_server.load("player-walk.png");
     let texture_atlas =
-        TextureAtlas::from_grid(texture_handle, Vec2::new(100.0, 100.0), 12, 2, None, None);
+        TextureAtlas::from_grid(texture_handle, Vec2::new(100.0, 100.0), 12, 3, None, None);
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
 
     let player_sprite_sheet = SpriteSheetBundle {
@@ -95,6 +100,9 @@ fn update_player(
                 // buffered hop, ignore other input for now
                 change_player_state(&mut player, PlayerState::HOPPING);
                 player.next_movement = PlayerMovement::NOTHING;
+            } else if player.next_movement == PlayerMovement::RUNJUMP {
+                change_player_state(&mut player, PlayerState::RUNJUMPING);
+                player.next_movement = PlayerMovement::NOTHING;
             } else if player.next_movement == PlayerMovement::CROUCH
                 && player.state != PlayerState::CROUCHING
             {
@@ -109,9 +117,17 @@ fn update_player(
                     was_input_pressed = true;
 
                     match player.state {
-                        PlayerState::IDLE | PlayerState::WALKING | PlayerState::HOPPING => {
-                            change_player_state(&mut player, PlayerState::WALKING);
-                            player.is_facing_left = false;
+                        PlayerState::IDLE
+                        | PlayerState::WALKING
+                        | PlayerState::HOPPING
+                        | PlayerState::RUNNING => {
+                            if keys.pressed(KeyCode::S) {
+                                change_player_state(&mut player, PlayerState::RUNNING);
+                                player.is_facing_left = false;
+                            } else {
+                                change_player_state(&mut player, PlayerState::WALKING);
+                                player.is_facing_left = false;
+                            }
                         }
                         PlayerState::CROUCHED | PlayerState::ROLLING => {
                             change_player_state(&mut player, PlayerState::ROLLING);
@@ -125,9 +141,17 @@ fn update_player(
                     was_input_pressed = true;
 
                     match player.state {
-                        PlayerState::IDLE | PlayerState::WALKING | PlayerState::HOPPING => {
-                            change_player_state(&mut player, PlayerState::WALKING);
-                            player.is_facing_left = true;
+                        PlayerState::IDLE
+                        | PlayerState::WALKING
+                        | PlayerState::HOPPING
+                        | PlayerState::RUNNING => {
+                            if keys.pressed(KeyCode::S) {
+                                change_player_state(&mut player, PlayerState::RUNNING);
+                                player.is_facing_left = true;
+                            } else {
+                                change_player_state(&mut player, PlayerState::WALKING);
+                                player.is_facing_left = true;
+                            }
                         }
                         PlayerState::CROUCHED | PlayerState::ROLLING => {
                             change_player_state(&mut player, PlayerState::ROLLING);
@@ -179,7 +203,11 @@ fn update_player(
             // rendering animation
             if keys.just_pressed(KeyCode::A) {
                 //change_player_state(&mut player, PlayerState::HOPPING);
-                player.next_movement = PlayerMovement::HOP;
+                if player.state != PlayerState::RUNNING {
+                    player.next_movement = PlayerMovement::HOP;
+                } else {
+                    player.next_movement = PlayerMovement::RUNJUMP;
+                }
             } else if keys.just_pressed(KeyCode::Down) {
                 player.next_movement = PlayerMovement::CROUCH;
             } else if keys.just_pressed(KeyCode::Up) {
@@ -197,6 +225,12 @@ fn change_player_state(player: &mut Player, state: PlayerState) {
     player.animation_handler.min_frame = player.state_frames[&player.state].0;
     player.animation_handler.max_frame = player.state_frames[&player.state].1;
     player.animation_handler.current_frame = player.animation_handler.min_frame;
+
+    if state == PlayerState::RUNNING {
+        player.animation_handler.set_timer_speed(0.05);
+    } else {
+        player.animation_handler.set_timer_speed(0.1);
+    }
 }
 
 fn animate_player(
@@ -216,6 +250,8 @@ fn animate_player(
 
             // if walk / run / hop, move forwards
             if player_current_state == &PlayerState::WALKING
+                || player_current_state == &PlayerState::RUNNING
+                || player_current_state == &PlayerState::RUNJUMPING
                 || player_current_state == &PlayerState::HOPPING
                 || player_current_state == &PlayerState::ROLLING
             {
@@ -225,6 +261,7 @@ fn animate_player(
                 let move_step = window.width() / NUM_TILES / num_frames;
 
                 if player_current_state == &PlayerState::WALKING
+                    || player_current_state == &PlayerState::RUNNING
                     || player_current_state == &PlayerState::ROLLING
                 {
                     // if walking, move fwd on all frames
@@ -251,12 +288,28 @@ fn animate_player(
                             transform.translation.x += move_step;
                         }
                     }
+                } else if player_current_state == &PlayerState::RUNJUMPING {
+                    // if hopping, we only move on the middle frames
+                    // TODO unhardcode these somehow
+                    if anim.current_frame == 7 {
+                        transform.translation.y += 30.0;
+                    } else if anim.current_frame == 9 {
+                        transform.translation.y -= 30.0;
+                    }
+
+                    let move_step = move_step * 3.0;
+                    // TODO can I refactor this out?
+                    if *is_left {
+                        transform.translation.x -= move_step;
+                    } else {
+                        transform.translation.x += move_step;
+                    }
                 }
             }
 
             if anim.current_frame > anim_bounds.1 {
                 match player_current_state {
-                    &PlayerState::WALKING | &PlayerState::ROLLING => {
+                    &PlayerState::WALKING | &PlayerState::ROLLING | &PlayerState::RUNNING => {
                         anim.current_frame = anim_bounds.0;
                     }
                     _ => {
@@ -268,5 +321,8 @@ fn animate_player(
         }
 
         spritesheet.index = anim.current_frame;
+        if player_current_state == &PlayerState::IDLE {
+            anim.is_playing = false;
+        }
     }
 }
