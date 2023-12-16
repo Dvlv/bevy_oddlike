@@ -24,6 +24,7 @@ enum PlayerState {
     ROLLING,
     RUNNING,
     RUNJUMPING,
+    JUMPINGUP,
 }
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
@@ -60,6 +61,7 @@ fn create_player(
     player_frames.insert(PlayerState::ROLLING, (19 as usize, 21 as usize));
     player_frames.insert(PlayerState::RUNNING, (22 as usize, 25 as usize));
     player_frames.insert(PlayerState::RUNJUMPING, (6 as usize, 9 as usize));
+    player_frames.insert(PlayerState::JUMPINGUP, (4 as usize, 11 as usize));
 
     let player = Player {
         state: PlayerState::IDLE,
@@ -177,6 +179,9 @@ fn update_player(
                         PlayerState::CROUCHED => {
                             change_player_state(&mut player, PlayerState::UNCROUCHING);
                         }
+                        PlayerState::IDLE => {
+                            change_player_state(&mut player, PlayerState::JUMPINGUP);
+                        }
                         _ => {
                             was_input_pressed = false;
                         }
@@ -225,12 +230,6 @@ fn change_player_state(player: &mut Player, state: PlayerState) {
     player.animation_handler.min_frame = player.state_frames[&player.state].0;
     player.animation_handler.max_frame = player.state_frames[&player.state].1;
     player.animation_handler.current_frame = player.animation_handler.min_frame;
-
-    if state == PlayerState::RUNNING {
-        player.animation_handler.set_timer_speed(0.05);
-    } else {
-        player.animation_handler.set_timer_speed(0.1);
-    }
 }
 
 fn animate_player(
@@ -258,12 +257,18 @@ fn animate_player(
                 // let mut move_step = window / NUM_TILES;
                 let window = window_query.get_single().unwrap();
                 let num_frames: f32 = anim.max_frame as f32 - anim.min_frame as f32 + 1 as f32;
-                let move_step = window.width() / NUM_TILES / num_frames;
+                let mut move_step = window.width() / NUM_TILES / num_frames;
 
                 if player_current_state == &PlayerState::WALKING
                     || player_current_state == &PlayerState::RUNNING
                     || player_current_state == &PlayerState::ROLLING
                 {
+                    if player_current_state == &PlayerState::RUNNING {
+                        // running works by moving 2 tiles per anim cycle
+                        // in Exod running also ends with a skid for 2 tiles
+                       move_step = move_step * 2.0;
+                    }
+
                     // if walking, move fwd on all frames
                     if *is_left {
                         transform.translation.x -= move_step;
@@ -280,7 +285,10 @@ fn animate_player(
                     }
 
                     if anim.current_frame > 6 && anim.current_frame < 11 {
-                        let move_step = move_step * 3.0;
+                        // move on frames 7,8,9,10 -> the 4.0 at the end
+                        // but we hop 3 tiles, so multiply by 3.0 as well
+                        let move_step = window.width() / NUM_TILES / 4.0 * 3.0;
+
                         // TODO can I refactor this out?
                         if *is_left {
                             transform.translation.x -= move_step;
@@ -297,7 +305,8 @@ fn animate_player(
                         transform.translation.y -= 30.0;
                     }
 
-                    let move_step = move_step * 3.0;
+                    // runjump should jump 4 tiles fwd
+                    let move_step = move_step * 4.0;
                     // TODO can I refactor this out?
                     if *is_left {
                         transform.translation.x -= move_step;
@@ -305,6 +314,17 @@ fn animate_player(
                         transform.translation.x += move_step;
                     }
                 }
+            } else if player_current_state == &PlayerState::JUMPINGUP {
+                // move up and down based on anim frame
+                let num_frames: f32 = anim.max_frame as f32 - anim.min_frame as f32 + 1 as f32;
+                let midpoint_frame = (num_frames / 2.0) + anim.min_frame as f32;
+
+                if (anim.current_frame as f32) <= midpoint_frame {
+                    transform.translation.y += 40.0;
+                } else if (anim.current_frame as f32) > midpoint_frame {
+                    transform.translation.y -= 40.0;
+                }
+
             }
 
             if anim.current_frame > anim_bounds.1 {
